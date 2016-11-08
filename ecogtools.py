@@ -1,5 +1,20 @@
 import pandas as pd
 
+def import_behavioral_data(filepath):
+	"""
+	Given filepath for behavioral data json file,
+	return dataframe of behavioral data to be used
+	to make events dataframe.
+	"""
+
+	with open(filepath) as fp:
+		beh = json.load(fp)
+
+	dat_list = beh['data']
+	dat = pd.DataFrame(dat_list)
+
+	return dat
+
 def melt_events(dat, event_names):
 	"""
 	Given a dataframe dat with one line per trial and a list of 
