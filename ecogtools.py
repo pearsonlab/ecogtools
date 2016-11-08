@@ -12,6 +12,7 @@ def load_physiology_data(filepath):
 	phys = mne.io.read_raw_edf(filepath, preload=False)
 	return phys 
 
+
 def load_behavioral_data(filepath):
 	"""
 	Given filepath for behavioral data json file,
@@ -27,6 +28,7 @@ def load_behavioral_data(filepath):
 
 	return dat
 
+
 def load_trigger_data(filepath):
 	"""
 	Given filepath for trigger csv file,
@@ -34,6 +36,7 @@ def load_trigger_data(filepath):
 	"""
 	trig = pd.read_csv(filepath, index_col=0, dtype={'trigger':'int64', 'trigger_index':'int64'})
 	return trig
+
 
 def melt_events(dat, event_names):
 	"""
@@ -47,6 +50,7 @@ def melt_events(dat, event_names):
 	evt.reset_index(drop=True, inplace=True)
 	return evt
 
+
 def merge_events_and_triggers(evt, trig, taskname=None):
 	"""
 	Combine event data from the task with triggers from the physiology.
@@ -59,6 +63,7 @@ def merge_events_and_triggers(evt, trig, taskname=None):
 	trig_merge =pd.concat([evt, trig_filt], axis=1)
 	return trig_merge
 
+
 def define_events(trig):
 	"""
 	Given trig, define trigger events for use in epochs.
@@ -68,7 +73,8 @@ def define_events(trig):
 
 	return events
 
-def create_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
+
+def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
 	"""
 	Given ecog data phys, events, and event_id, plus option tmnin,
 	tmax, and channels of interest (picks), create epoch object.
@@ -85,6 +91,7 @@ def create_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin= 
 
 	return epochs_df_melt
 
+
 def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
 	"""
 	Given merged trigger and evt dataframes (trig_merge) and
@@ -94,8 +101,46 @@ def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
 	ep_df = epochs_df_melt.merge(trig_merge, left_on='epoch', right_index=True)
 
 	return ep_df
- 
 
+def load_data(filepath_ecog, filepath_behav, filepath_trig):
+	"""
+	Load all data
+	"""
+	phys = load_physiology_data(filepath_ecog)
+	dat = load_behavioral_data(filepath_behav)
+	trig = load_trigger_data(filepath_trig)
+
+	return phys, dat, trig
+
+
+def merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, 
+							channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
+	"""
+	Take all loaded data from phys, dat, and trig,
+	merge to create final epochs dataframe using 
+	functions to merge events and triggers, define events,
+	and initialize epochs object.
+	"""
+	evt = melt_events(dat, event_names)
+	trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
+	events = define_events(trig)
+	epochs_df_melt = initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax )
+	ep_df = merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt)
+
+	return ep_df
+ 
+def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, 
+								channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
+	"""
+	Load data and create epochs dataframe based on channels of interest,
+	tmin and tmax, and task (including event_names and ids).
+	"""
+	
+	phys, dat, trig = load_data(filepath_ecog, filepath_behav, filepath_trig)
+	epochs = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, 
+										tmin=tmin, tmax=tmax, taskname=taskname)
+
+	return epochs
 
 
 
