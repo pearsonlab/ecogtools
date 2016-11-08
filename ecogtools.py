@@ -1,4 +1,10 @@
 import pandas as pd
+import numpy as np
+import mne
+
+def load_physiology_data(filepath):
+	phys = mne.io.read_raw_edf(filepath, preload=False)
+	return phys 
 
 def melt_events(dat, event_names):
 	"""
@@ -12,13 +18,19 @@ def melt_events(dat, event_names):
 	evt.reset_index(drop=True, inplace=True)
 	return evt
 
-def merge_events_and_triggers(evt, trig, taskname=None):
+def merge_events_and_triggers(evt, trig, task=None):
 	"""
 	Combine event data from the task with triggers from the physiology.
 	"""
-	if taskname:
+	if task:
 		trig_filt = trig.query("task == @taskname")
 	else:
 		trig_filt = trig.copy()
 	trig_filt.reset_index(drop=True, inplace=True)
-	return pd.concat([evt, trig_filt], axis=1)
+	trig_merge =pd.concat([evt, trig_filt], axis=1)
+	return trig_merge
+
+def define_events(event_id):
+	"""
+	Define trigger events for use in epochs
+	"""
