@@ -2,6 +2,23 @@ import pandas as pd
 import numpy as np
 import mne
 import json
+"""
+EXAMPLE SETUP code
+
+filepath_ecog = "patient_2003/john_2003.edf"
+filepath_behav = "patient_2003/behavioral_data/ToM_Task_2010_2003.json"
+filepath_trig = "patient_2003/2003_trigger_merged.csv"
+
+taskname = "Tom 2010"
+event_names = ['quest_start', 'story_start', 'time_of_response']
+event_id = {'story_start': 1, 'quest_start': 4, 'time_of_response': 16}
+
+channels_of_interest = ['LTG22', 'LTG29']
+tmin = -0.2
+tmax = 0.5
+
+epochs = ecogtools.preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, channels_of_interest, taskname=taskname)
+"""
 
 def load_physiology_data(filepath):
 	"""
