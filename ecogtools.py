@@ -1,12 +1,18 @@
 import pandas as pd
 import numpy as np
 import mne
+import json
 
 def load_physiology_data(filepath):
+	"""
+	Given filepath for ecog .edf file,
+	return mne raw_data object of ecog time series data.
+	"""
+
 	phys = mne.io.read_raw_edf(filepath, preload=False)
 	return phys 
 
-def import_behavioral_data(filepath):
+def load_behavioral_data(filepath):
 	"""
 	Given filepath for behavioral data json file,
 	return dataframe of behavioral data to be used
@@ -21,6 +27,14 @@ def import_behavioral_data(filepath):
 
 	return dat
 
+def load_trigger_data(filepath):
+	"""
+	Given filepath for trigger csv file,
+	return dataframe of trigger data.
+	"""
+	trig = pd.read_csv(filepath, index_col=0, dtype={'trigger':'int64', 'trigger_index':'int64'})
+	return trig
+
 def melt_events(dat, event_names):
 	"""
 	Given a dataframe dat with one line per trial and a list of 
@@ -33,11 +47,11 @@ def melt_events(dat, event_names):
 	evt.reset_index(drop=True, inplace=True)
 	return evt
 
-def merge_events_and_triggers(evt, trig, task=None):
+def merge_events_and_triggers(evt, trig, taskname=None):
 	"""
 	Combine event data from the task with triggers from the physiology.
 	"""
-	if task:
+	if taskname:
 		trig_filt = trig.query("task == @taskname")
 	else:
 		trig_filt = trig.copy()
@@ -45,7 +59,46 @@ def merge_events_and_triggers(evt, trig, task=None):
 	trig_merge =pd.concat([evt, trig_filt], axis=1)
 	return trig_merge
 
-def define_events(event_id):
+def define_events(trig):
 	"""
-	Define trigger events for use in epochs
+	Given trig, define trigger events for use in epochs.
 	"""
+
+	events = np.c_[trig['trigger_index'].values, np.zeros(trig.shape[0], dtype='int64'), trig['trigger'].values]
+
+	return events
+
+def create_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
+	"""
+	Given ecog data phys, events, and event_id, plus option tmnin,
+	tmax, and channels of interest (picks), create epoch object.
+	Then 
+	"""
+	channel_indices = mne.pick_channels(phys.ch_names, channels_of_interest)
+	epochs = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices)
+	epochs_df = epochs.to_data_frame(index='time', scale_time=10000)
+	epochs_df_melt = pd.melt(epochs_df.reset_index(), 
+								id_vars=['time', 'condition', 'epoch'], 
+								var_name='channel', 
+								value_name='voltage')
+
+
+	return epochs_df_melt
+
+def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
+	"""
+	Given merged trigger and evt dataframes (trig_merge) and
+	epochs df, merge.
+	"""
+
+	ep_df = epochs_df_melt.merge(trig_merge, left_on='epoch', right_index=True)
+
+	return ep_df
+ 
+
+
+
+
+
+
+
