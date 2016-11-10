@@ -17,7 +17,7 @@ channels_of_interest = ['LTG22', 'LTG29']
 tmin = -0.2
 tmax = 0.5
 
-epochs = ecogtools.preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, channels_of_interest, taskname=taskname)
+epochs, phys, dat, trig, epochs_mne = ecogtools.preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, channels_of_interest, taskname=taskname)
 """
 
 def load_physiology_data(filepath):
@@ -106,7 +106,7 @@ def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tm
 								value_name='voltage')
 
 
-	return epochs_df_melt
+	return epochs_df_melt, epochs
 
 
 def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
@@ -141,10 +141,10 @@ def merge_to_final_epochs_df(phys, dat, trig, event_names, event_id,
 	evt = melt_events(dat, event_names)
 	trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
 	events = define_events(trig)
-	epochs_df_melt = initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax )
+	epochs_df_melt, epochs = initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax )
 	ep_df = merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt)
 
-	return ep_df
+	return ep_df, epochs
  
 def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, 
 								channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
@@ -154,12 +154,10 @@ def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, e
 	"""
 	
 	phys, dat, trig = load_data(filepath_ecog, filepath_behav, filepath_trig)
-	epochs = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, 
+	epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, 
 										tmin=tmin, tmax=tmax, taskname=taskname)
 
-	return epochs
-
-
+	return epochs, phys, dat, trig, epochs_mne
 
 
 
