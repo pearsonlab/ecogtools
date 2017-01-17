@@ -98,7 +98,7 @@ def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tm
 	Then 
 	"""
 	channel_indices = mne.pick_channels(phys.ch_names, channels_of_interest)
-	epochs = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices)
+	epochs = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
 	epochs_df = epochs.to_data_frame(index='time', scale_time=10000)
 	epochs_df_melt = pd.melt(epochs_df.reset_index(), 
 								id_vars=['time', 'condition', 'epoch'], 
