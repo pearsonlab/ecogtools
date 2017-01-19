@@ -2,6 +2,12 @@ import pandas as pd
 import numpy as np
 import mne
 import json
+import os
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from __future__ import print_function
 """
 EXAMPLE SETUP code
 
@@ -158,6 +164,45 @@ def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, e
 										tmin=tmin, tmax=tmax, taskname=taskname)
 
 	return epochs, phys, dat, trig, epochs_mne
+
+def plot_dataframe(patient, epochs, taskname, channel_i, condition='quest_start'):
+	title = patient + " " + taskname + " " + channel_i
+	fig = plt.figure(figsize=(12, 9))
+	plt.title(title)
+	axes = plt.gca()
+	axes.set_ylim([-120, 120])
+    
+	query_string = 'channel == "{}"  & condition == "{}"'.format(channel_i, condition)
+	sns.tsplot(epochs.query(query_string), unit='epoch', condition='trial_cond', time='time', value='voltage')
+    
+	folder = patient + '/' + taskname + "_images" + "/"
+	filename =  title + ".png"
+    
+	if not os.path.exists(folder):
+		os.makedirs(folder)
+
+	fig.savefig(folder + filename)
+	plt.close()
+
+def loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, condition):
+
+	for i in np.arange(len(phys.ch_names)):
+		print()
+		print ("{}".format(phys.ch_names[i])
+		channels_of_interest = [phys.ch_names[i]]
+	    
+		epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, tmin=tmin, tmax=tmax, taskname=taskname)
+	    
+		plot_dataframe(patient, epochs, taskname, phys.ch_names[i], condition=condition)
+
+
+
+
+
+
+
+
+
 
 
 
