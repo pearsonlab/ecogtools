@@ -2,9 +2,18 @@ import pandas as pd
 import numpy as np
 import mne
 import json
+<<<<<<< HEAD
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+=======
+import os
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from __future__ import print_function
+>>>>>>> 0bc4da90d083c6df042b03e5344cde5d1602efcc
 """
 EXAMPLE SETUP code
 
@@ -177,21 +186,20 @@ def plot_dataframe(patient, epochs, taskname, channel_i, condition='quest_start'
     
 	if not os.path.exists(folder):
 		os.makedirs(folder)
-    
+
 	fig.savefig(folder + filename)
 	plt.close()
 
 def loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, condition):
 
 	for i in np.arange(len(phys.ch_names)):
-		print("")
-		print("%s" % (phys.ch_names[i],))
+		print()
+		print ("{}".format(phys.ch_names[i])
 		channels_of_interest = [phys.ch_names[i]]
 	    
 		epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, tmin=tmin, tmax=tmax, taskname=taskname)
 	    
 		plot_dataframe(patient, epochs, taskname, phys.ch_names[i], condition=condition)
-
 
 
 
