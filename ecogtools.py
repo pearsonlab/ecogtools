@@ -2,18 +2,13 @@ import pandas as pd
 import numpy as np
 import mne
 import json
-<<<<<<< HEAD
-import matplotlib.pyplot as plt
-import seaborn as sns
-import os
-=======
 import os
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from __future__ import print_function
->>>>>>> 0bc4da90d083c6df042b03e5344cde5d1602efcc
+
 """
 EXAMPLE SETUP code
 
