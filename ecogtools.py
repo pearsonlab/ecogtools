@@ -108,7 +108,8 @@ def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tm
 	channel_indices = mne.pick_channels(phys.ch_names, channels_of_interest)
 	epochs = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
 	epochs_df = epochs.to_data_frame(index='time', scale_time=10000)
-	epochs_df = epochs_df.rename(index=str, columns={"condition": "trig_condition"})
+	epochs_df["trig_condition"] = epochs_df["condition"]
+	epochs_df.drop("condition", axis=1, inplace=True)	
 	epochs_df_melt = pd.melt(epochs_df.reset_index(), 
 								id_vars=['time', 'trig_condition', 'epoch'], 
 								var_name='channel', 
@@ -175,12 +176,21 @@ def plot_dataframe(patient, epochs, taskname, channel_i, trig_condition='quest_s
 	axes = plt.gca()
 	axes.set_ylim([-120, 120])
     
-    if taskname == "ToM_Loc":
-    	query_string = 'channel == "{}"  & trig_condition == "{}"'.format(channel_i, trig_condition) 
-    	sns.tsplot(epochs.query(query_string), unit='epoch', condition='trial_cond', time='time', value='voltage')
-    elif taskname == "ToM_2010":
-    	query_string = 'channel == "{}"  & trig_condition == "{}"'.format(channel_i, trig_condition) 
-		sns.tsplot(epochs.query(query_string), unit='epoch', condition='state', time='time', value='voltage')
+	if taskname == "ToM_Loc":
+		query_string = 'channel == "{}"  & trig_condition == "{}"'.format(channel_i, trig_condition) 
+		sns.tsplot(epochs.query(query_string), unit='epoch', condition='trial_cond', time='time', value='voltage')
+	elif taskname == "ToM_2010":
+		colors = sns.color_palette("Paired", 4)
+
+		query_string_1 = 'channel == "{}"  & trig_condition == "{}" & condition == "expected"'.format(channel_i, trig_condition) 
+		query_string_2 = 'channel == "{}"  & trig_condition == "{}" & condition == "unexpected"'.format(channel_i, trig_condition) 
+		
+		sns.tsplot(epochs.query(query_string_1), unit='epoch', time='time', condition="state", ci=0, 
+					value='voltage', color= [colors[0], colors[2]])
+		sns.tsplot(epochs.query(query_string_2), unit='epoch', condition='state', time='time', ci=0, 
+					value='voltage', color= [colors[3], colors[1]])
+		plt.title(title+" (Light colors are expected)")
+
 
 	folder = patient + '/' + taskname + "_images" + "/"
 	filename =  title + ".png"
