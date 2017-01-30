@@ -98,16 +98,22 @@ def define_events(trig):
 
 	return events
 
-
-def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
+def initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
 	"""
 	Given ecog data phys, events, and event_id, plus option tmnin,
-	tmax, and channels of interest (picks), create epoch object.
-	Then 
+	tmax, and channels of interest (picks), create epoch object. 
 	"""
 	channel_indices = mne.pick_channels(phys.ch_names, channels_of_interest)
-	epochs = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
-	epochs_df = epochs.to_data_frame(index='time', scale_time=10000)
+	epochs_mne = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
+
+	return epochs_mne
+
+
+def initialize_epochs_dataframe(epochs_mne):
+	"""
+	Given epochs_mne object, create dataframe of epochs.
+	"""
+	epochs_df = epochs_mne.to_data_frame(index='time', scale_time=10000)
 	epochs_df["trig_condition"] = epochs_df["condition"]
 	epochs_df.drop("condition", axis=1, inplace=True)	
 	epochs_df_melt = pd.melt(epochs_df.reset_index(), 
@@ -116,7 +122,7 @@ def initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tm
 								value_name='voltage')
 
 
-	return epochs_df_melt, epochs
+	return epochs_df_melt
 
 
 def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
@@ -151,10 +157,11 @@ def merge_to_final_epochs_df(phys, dat, trig, event_names, event_id,
 	evt = melt_events(dat, event_names)
 	trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
 	events = define_events(trig)
-	epochs_df_melt, epochs = initialize_epochs_dataframe(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax )
+	epochs_mne = initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax)
+	epochs_df_melt= initialize_epochs_dataframe(epochs_mne)
 	ep_df = merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt)
 
-	return ep_df, epochs
+	return ep_df, epochs_mne
  
 def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id, 
 								channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
@@ -201,17 +208,107 @@ def plot_dataframe(patient, epochs, taskname, channel_i, trig_condition='quest_s
 	fig.savefig(folder + filename)
 	plt.close()
 
+def plot_time_series(evoked_qbp, evoked_qb, evoked_qp, channel, patient, taskname):
+	folder = patient + '/' + taskname + "_TS_mne_images" + "/"
 
-def loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, trig_condition):
+	if not os.path.exists(folder):
+		os.makedirs(folder)
+
+	fig = evoked_qb.plot()
+	title = patient + " " + taskname + " " + channel[0] + " " + "TSb-p"
+	filename =  title + ".png"
+	fig.savefig(folder + filename)
+	plt.close()
+
+	fig = evoked_qp.plot()
+	title = patient + " " + taskname + " " + channel[0] + " " + "TSb"
+	filename =  title + ".png"
+	fig.savefig(folder + filename)
+	plt.close()
+
+	fig = evoked_qbp.plot()
+	title = patient + " " + taskname + " " + channel[0] + " " + "TSp"
+	filename =  title + ".png"
+	fig.savefig(folder + filename)
+	plt.close()
+
+def loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, trig_condition, type_of_plotting, freqs=None, n_cycles=None):
 
 	for i in np.arange(len(phys.ch_names)):
 		print()
 		print ("{}".format(phys.ch_names[i]))
 		channels_of_interest = [phys.ch_names[i]]
 	    
-		epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, tmin=tmin, tmax=tmax, taskname=taskname)
-	    
-		plot_dataframe(patient, epochs, taskname, phys.ch_names[i], trig_condition=trig_condition)
+		if type_of_plotting == "time_series_df":
+			epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, tmin=tmin, tmax=tmax, taskname=taskname)
+		    
+			plot_dataframe(patient, epochs, taskname, phys.ch_names[i], trig_condition=trig_condition)
+		
+		elif type_of_plotting == "time_series_mne":
+			epochs = create_tf_epochs(dat, event_names, trig, taskname, phys, event_id, channels_of_interest, tmin, tmax)
+			evoked_qbp, evoked_qb, evoked_qp = create_evoked_tf(epochs)
+
+			plot_time_series(evoked_qbp, evoked_qb, evoked_qp, channels_of_interest, patient, taskname)
+
+		elif type_of_plotting == "time_frequency":
+			epochs = create_tf_epochs(dat, event_names, trig, taskname, phys, event_id, channels_of_interest, tmin, tmax)
+			evoked = create_evoked_tf(epochs)
+
+			plot_tf(evoked, freqs, n_cycles, channels_of_interest, patient, taskname)
+
+def create_tf_epochs(dat, event_names, trig, taskname, phys, event_id, channel, tmin, tmax):
+	evt = melt_events(dat, event_names)
+	trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
+
+	for i in range(len(trig_merge)):
+		if trig_merge.loc[i, "trial_cond"] == "p":
+			trig_merge.loc[i, "trigger"] += 1
+
+	events = define_events(trig_merge)
+
+	epochs = initialize_epochs_object(phys, events, event_id, channel, tmin=tmin, tmax=tmax)
+
+	return epochs
+
+def create_evoked_tf(epochs):
+	epochs.load_data()
+
+	evoked_qb = epochs['b/quest_start'].average()
+	evoked_qp = epochs['p/quest_start'].average()
+
+	evoked_qbp = mne.combine_evoked([evoked_qb, evoked_qp], weights=[1, -1])
+
+	return evoked_qbp, evoked_qb, evoked_qp
+
+def plot_tf(evoked_qbp, freqs, n_cycles, channel, patient, taskname):
+	power = mne.time_frequency.tfr_morlet(evoked_qbp, freqs=freqs, n_cycles=n_cycles, use_fft=True,
+						return_itc=False, decim=3, n_jobs=1)
+
+	folder = patient + '/' + taskname + "_TF_images" + "/"
+
+	if not os.path.exists(folder):
+		os.makedirs(folder)
+
+	fig = power.plot([0], baseline=(-1., 0), mode="logratio", title=channel[0]+" TF Plot")
+	
+	title = patient + " " + taskname + " " + channel[0] + " " + "TF"
+	filename =  title + ".png"
+	fig.savefig(folder + filename)
+	plt.close()
+
+	fig = evoked_qbp.plot()
+
+	title = patient + " " + taskname + " " + channel[0] + " " + "evoked"
+	filename =  title + ".png"
+	fig.savefig(folder + filename)
+	plt.close()
+
+
+
+
+
+
+
 
 
 
