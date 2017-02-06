@@ -67,6 +67,14 @@ try:
 except ValueError:
     print("Done")
 """
+# hello
+
+def check_directories(patient_num, taskname):
+    folder = "patient_" + patient_num + '/' + taskname + "_plots/"
+
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
 
 def load_physiology_data(filepath):
     """
@@ -116,14 +124,12 @@ def melt_events(dat, event_names):
     return evt
 
 
-def merge_events_and_triggers(evt, trig, taskname=None):
+def merge_events_and_triggers(evt, trig, taskname):
     """
-    Combine event data from the task with triggers from the physiology.
+    Combine behavioral data from the task with triggers from the csv file.
     """
-    if taskname:
-        trig_filt = trig.query("task == @taskname")
-    else:
-        trig_filt = trig.copy()
+    
+    trig_filt = trig.query("task == @taskname")
     trig_filt.reset_index(drop=True, inplace=True)
     trig_merge =pd.concat([evt, trig_filt], axis=1)
     return trig_merge
@@ -131,12 +137,55 @@ def merge_events_and_triggers(evt, trig, taskname=None):
 
 def define_events(trig):
     """
-    Given trig, define trigger events for use in epochs.
+    Given dataframe with trigger information from csv file,
+    create numpy array of tuples that MNE uses to define events 
+    in format (trigger value, 0,  trigger number)
+    where trigger value corresponds to timing in physiology 
+    data (edf).
     """
 
     events = np.c_[trig['trigger_index'].values, np.zeros(trig.shape[0], dtype='int64'), trig['trigger'].values]
 
     return events
+
+
+def load_data(filepath_ecog, filepath_behav, filepath_trig, event_names, taskname):
+    """
+    Load all data. Return phys, ch_names, sfreq (sampling frequency),
+    trig_and_behav (trigger dataframe and behavioral dataframe merged),
+    and events (a numpy array that MNE epochs requires for trigger times and values).
+    """
+    # Load data from file
+    phys = load_physiology_data(filepath_ecog)
+    dat = load_behavioral_data(filepath_behav)
+    trig = load_trigger_data(filepath_trig)
+
+    # Important information from edf file
+    ch_names = phys.ch_names
+    sfreq = phys.info['sfreq']
+
+    # Unpivot behavioral dataframe
+    evt = melt_events(dat, event_names)
+    
+    # Combine behavioral data and triggers.
+    trig_and_behav = merge_events_and_triggers(evt, trig, taskname)
+
+    # Create array for MNE
+    events = define_events(trig_and_behav)
+
+    return phys, ch_names, sfreq, trig_and_behav, events
+
+
+def tom_loc_triggers(trig_and_behav, events):
+    """
+    Add one to trigger numbers for photograph condition
+    to distinguish trigger events for MNE.
+    1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
+    """
+    for i in range(len(trig_and_behav)):
+        if trig_and_behav.loc[i, "trial_cond"] == "p":
+            events[i, 2] += 1
+            trig_and_behav.loc[i, "trigger"] += 1
 
 
 def initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
@@ -148,6 +197,23 @@ def initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin=
     epochs_mne = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
 
     return epochs_mne
+
+
+def create_evoked(epochs):
+    """
+    Load epochs data, split epochs object to two evoked responses
+    for belief and photograph condition, combine (subtracting belief
+    minus photograph) and return three evoked response objects.
+    """
+
+    epochs.load_data()
+
+    evoked_qb = epochs['b/quest_start'].average()
+    evoked_qp = epochs['p/quest_start'].average()
+
+    evoked_qbp = mne.combine_evoked([evoked_qb, evoked_qp], weights=[1, -1])
+
+    return evoked_qbp, evoked_qb, evoked_qp
 
 
 def initialize_epochs_dataframe(epochs_mne):
@@ -175,17 +241,6 @@ def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
     ep_df = epochs_df_melt.merge(trig_merge, left_on='epoch', right_index=True)
 
     return ep_df
-
-
-def load_data(filepath_ecog, filepath_behav, filepath_trig):
-    """
-    Load all data
-    """
-    phys = load_physiology_data(filepath_ecog)
-    dat = load_behavioral_data(filepath_behav)
-    trig = load_trigger_data(filepath_trig)
-
-    return phys, dat, trig
 
 
 def merge_to_final_epochs_df(phys, dat, trig, event_names, event_id,
@@ -259,42 +314,7 @@ def plot_dataframe(patient, epochs, taskname, channel_i, trig_condition='quest_s
     plt.close()
 
 
-def create_mne_epochs(dat, event_names, trig, taskname, phys, event_id, channel, tmin, tmax):
-    """
-    Given behavioral dataframe, event_names and trigger dataframe,
-    combine dataframes, set up new trigger dataframe for more native
-    MNE event_ids for ToM Localizer task and initialize MNE epochs object.
-    """
 
-    evt = melt_events(dat, event_names)
-    trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
-
-    for i in range(len(trig_merge)):
-        if trig_merge.loc[i, "trial_cond"] == "p":
-            trig_merge.loc[i, "trigger"] += 1
-
-    events = define_events(trig_merge)
-
-    epochs = initialize_epochs_object(phys, events, event_id, channel, tmin=tmin, tmax=tmax)
-
-    return epochs
-
-
-def create_evoked(epochs):
-    """
-    Load epochs data, split epochs object to two evoked responses
-    for belief and photograph condition, combine (subtracting belief
-    minus photograph) and return three evoked response objects.
-    """
-
-    epochs.load_data()
-
-    evoked_qb = epochs['b/quest_start'].average()
-    evoked_qp = epochs['p/quest_start'].average()
-
-    evoked_qbp = mne.combine_evoked([evoked_qb, evoked_qp], weights=[1, -1])
-
-    return evoked_qbp, evoked_qb, evoked_qp
 
 
 def plot_time_series(evoked_qbp, evoked_qb, evoked_qp, channel, patient, taskname):
