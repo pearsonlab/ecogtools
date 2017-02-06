@@ -9,212 +9,199 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+class Data:
 
-"""
-EXAMPLE SETUP code
-patient = "patient_2002"
+    def __init__(self, patient_num, taskname, event_names, event_id):
+        self.patient_num = patient_num
+        self.taskname = taskname
+        self.event_names = event_names
+        self.event_id = event_id
 
-filepath_ecog = patient + "/" + "john_2002.edf"
-filepath_behav = patient + "/" + "behavioral_data_2002/ToM_Loc_2002.json"
-filepath_trig = patient + "/" + "2002_trigger_merged.csv"
+        self.ecogfile = "patient_" + patient_num + "/" + "john_" + patient_num + ".edf"
+        self.trigfile = "patient_" + patient_num + "/" + patient_num + "_trigger_merged.csv"
 
-phys, dat, trig = ecogtools.load_data(filepath_ecog, filepath_behav, filepath_trig)
+        if self.taskname == "ToM_Loc":
+            self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Loc_" + patient_num + ".json"
 
-taskname = "ToM_Loc"
+            self.load_data()
+            self.tom_loc_triggers()
 
-event_names = ['quest_start', 'story_start', 'time_of_resp']
+        else:
+            print("You haven't set up other tasks yet.")
 
-tmin = -1.
-tmax = 5.
+        self.check_directories()
 
-trig_condition = "quest_start"
+        self.evoked_list = []
 
-## 3 options:
-# Time series plotting with dataframe
-type_of_plotting = "time_series_df"
+        
+    def load_physiology_data(self):
+        """
+        Given filepath for ecog .edf file,
+        return mne raw_data object of ecog time series data.
+        """
 
-event_id = {'story_start': 1, 'quest_start': 4, 'time_of_resp': 16}
+        self.phys = mne.io.read_raw_edf(self.ecogfile, preload=False)
 
-try:
-    ecogtools.loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, trig_condition, type_of_plotting)
-except ValueError: #this just catches the end when phys.ch_names has the strange trigger channels in it.
-    print("Done")
 
-# Time series plotting with MNE
-type_of_plotting = "time_series_mne"
+    def load_behavioral_data(self):
+        """
+        Given filepath for behavioral data json file,
+        return dataframe of behavioral data to be used
+        to make events dataframe.
+        """
 
-event_id = {'b/story_start': 1, 'b/quest_start': 4, 'b/time_of_resp': 16,
-    'p/story_start': 2, 'p/quest_start': 5, 'p/time_of_resp': 17}
+        with open(self.behavfile) as fp:
+            beh = json.load(fp)
 
-try:
-    ecogtools.loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient,
-    taskname, trig_condition, type_of_plotting)
-except ValueError:
-    print("Done")
+        dat_list = beh['data']
+        self.dat = pd.DataFrame(dat_list)
 
-# Time frequency plotting
-event_id = {'b/story_start': 1, 'b/quest_start': 4, 'b/time_of_resp': 16,
-    'p/story_start': 2, 'p/quest_start': 5, 'p/time_of_resp': 17}
 
-freqs = np.arange(2, 100, 5)
-n_cycles = freqs/2.
+    def load_trigger_data(self):
+        """
+        Given filepath for trigger csv file,
+        return dataframe of trigger data.
+        """
+        self.trig = pd.read_csv(self.trigfile, index_col=0, dtype={'trigger':'int64', 'trigger_index':'int64'})
 
-type_of_plotting = "time_frequency"
 
-try:
-    ecogtools.loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname,
-    trig_condition, type_of_plotting, freqs=freqs, n_cycles=n_cycles)
-except ValueError:
-    print("Done")
-"""
-# hello
+    def melt_events(self):
+        """
+        Given a dataframe dat with one line per trial and a list of
+        strings giving names of columns to consider as events,
+        return a dataframe with one line per (trial, event) combination.
+        """
+        id_names = [c for c in self.dat.columns if not c in self.event_names]
+        evt = pd.melt(self.dat, id_vars=id_names, value_vars=self.event_names, var_name='trigger_name', value_name='cpu_trigger_time')
+        evt.sort_values(by='cpu_trigger_time', inplace=True)
+        evt.reset_index(drop=True, inplace=True)
+        self.evt = evt
 
-def check_directories(patient_num, taskname):
-    folder = "patient_" + patient_num + '/' + taskname + "_plots/"
+
+    def merge_events_and_triggers(self):
+        """
+        Combine behavioral data from the task with triggers from the csv file.
+        """
+        
+        trig_filt = self.trig.query("task == @self.taskname")
+        trig_filt.reset_index(drop=True, inplace=True)
+        self.trig_and_behav =pd.concat([self.evt, trig_filt], axis=1)
+
+
+    def define_events(self):
+        """
+        Given dataframe with trigger information from csv file,
+        create numpy array of tuples that MNE uses to define events 
+        in format (trigger value, 0,  trigger number)
+        where trigger value corresponds to timing in physiology 
+        data (edf).
+        """
+
+        self.events = np.c_[self.trig_and_behav['trigger_index'].values, np.zeros(self.trig_and_behav.shape[0], dtype='int64'), self.trig_and_behav['trigger'].values]
+
+
+    def load_data(self):
+        """
+        Load all data. Return phys, ch_names, sfreq (sampling frequency),
+        trig_and_behav (trigger dataframe and behavioral dataframe merged),
+        and events (a numpy array that MNE epochs requires for trigger times and values).
+        """
+        # Load data from file
+        self.load_physiology_data()
+        self.load_behavioral_data()
+        self.load_trigger_data()
+
+        # Important information from edf file
+        self.ch_names = self.phys.ch_names
+        self.sfreq = self.phys.info['sfreq']
+
+        # Unpivot behavioral dataframe
+        self.melt_events()
+        
+        # Combine behavioral data and triggers.
+        self.merge_events_and_triggers()
+
+        # Create array for MNE
+        self.define_events()
+
+    def check_directories(self):
+        folder = "patient_" + self.patient_num + '/' + self.taskname + "_plots/"
+
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+
+    def tom_loc_triggers(self):
+        """
+        Add one to trigger numbers for photograph condition
+        to distinguish trigger events for MNE.
+        1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
+        """
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "trial_cond"] == "p":
+                self.events[i, 2] += 1
+                self.trig_and_behav.loc[i, "trigger"] += 1
+
+
+    def initialize_epochs_object(self, channels_of_interest, tmin=-1., tmax=5.0):
+        """
+        Given ecog data phys, events, and event_id, plus option tmnin,
+        tmax, and channels of interest (picks), create MNE epochs object.
+        """
+        
+        channel_indices = [i for i, j in enumerate(self.ch_names) for k in channels_of_interest if j == k]
+        self.epochs = mne.Epochs(self.phys, self.events, event_id=self.event_id, tmin=tmin, tmax=tmax, 
+                                picks = channel_indices, add_eeg_ref=False)
+        self.epochs.load_data()
+
+
+    def create_evoked(self, condition):
+        """
+        REWRITE
+        """
+        evoked = self.epochs[condition].average()
+        self.evoked_list.append(evoked)
+
+        return evoked
+
+    def compute_power(self, condition, freqs, n_cycles):
+        """
+        COMMENT
+        """
+        power, itc = mne.time_frequency.tfr_morlet(self.epochs[condition], freqs=freqs, n_cycles=n_cycles,
+                                                    use_fft=False, return_itc=True, average=True)
+
+        return power, itc
+
+def plot_tf(evoked_qbp, freqs, n_cycles, channel, patient, taskname):
+    """
+    Given evoked object (belief minus photo), use morlet wavelet on evoked object
+    to find power. Plot power (TF plot) and evoked response. Save figure to patient
+    directory.
+    """
+
+    power = mne.time_frequency.tfr_morlet(evoked_qbp, freqs=freqs, n_cycles=n_cycles, use_fft=True, return_itc=False, decim=3, n_jobs=1)
+
+    folder = patient + '/' + taskname + "_TF_images" + "/"
 
     if not os.path.exists(folder):
         os.makedirs(folder)
 
+    fig = power.plot([0], baseline=(-1., 0), mode="logratio", title=channel[0]+" TF Plot")
 
-def load_physiology_data(filepath):
-    """
-    Given filepath for ecog .edf file,
-    return mne raw_data object of ecog time series data.
-    """
+    title = patient + " " + taskname + " " + channel[0] + " " + "TF"
+    filename =  title + ".png"
+    fig.savefig(folder + filename)
+    plt.close()
 
-    phys = mne.io.read_raw_edf(filepath, preload=False)
-    return phys
+    fig = evoked_qbp.plot()
 
+    title = patient + " " + taskname + " " + channel[0] + " " + "evoked"
+    filename =  title + ".png"
+    fig.savefig(folder + filename)
+    plt.close()
 
-def load_behavioral_data(filepath):
-    """
-    Given filepath for behavioral data json file,
-    return dataframe of behavioral data to be used
-    to make events dataframe.
-    """
-
-    with open(filepath) as fp:
-        beh = json.load(fp)
-
-    dat_list = beh['data']
-    dat = pd.DataFrame(dat_list)
-
-    return dat
-
-
-def load_trigger_data(filepath):
-    """
-    Given filepath for trigger csv file,
-    return dataframe of trigger data.
-    """
-    trig = pd.read_csv(filepath, index_col=0, dtype={'trigger':'int64', 'trigger_index':'int64'})
-    return trig
-
-
-def melt_events(dat, event_names):
-    """
-    Given a dataframe dat with one line per trial and a list of
-    strings giving names of columns to consider as events,
-    return a dataframe with one line per (trial, event) combination.
-    """
-    id_names = [c for c in dat.columns if not c in event_names]
-    evt = pd.melt(dat, id_vars=id_names, value_vars=event_names, var_name='trigger_name', value_name='cpu_trigger_time')
-    evt.sort_values(by='cpu_trigger_time', inplace=True)
-    evt.reset_index(drop=True, inplace=True)
-    return evt
-
-
-def merge_events_and_triggers(evt, trig, taskname):
-    """
-    Combine behavioral data from the task with triggers from the csv file.
-    """
-    
-    trig_filt = trig.query("task == @taskname")
-    trig_filt.reset_index(drop=True, inplace=True)
-    trig_merge =pd.concat([evt, trig_filt], axis=1)
-    return trig_merge
-
-
-def define_events(trig):
-    """
-    Given dataframe with trigger information from csv file,
-    create numpy array of tuples that MNE uses to define events 
-    in format (trigger value, 0,  trigger number)
-    where trigger value corresponds to timing in physiology 
-    data (edf).
-    """
-
-    events = np.c_[trig['trigger_index'].values, np.zeros(trig.shape[0], dtype='int64'), trig['trigger'].values]
-
-    return events
-
-
-def load_data(filepath_ecog, filepath_behav, filepath_trig, event_names, taskname):
-    """
-    Load all data. Return phys, ch_names, sfreq (sampling frequency),
-    trig_and_behav (trigger dataframe and behavioral dataframe merged),
-    and events (a numpy array that MNE epochs requires for trigger times and values).
-    """
-    # Load data from file
-    phys = load_physiology_data(filepath_ecog)
-    dat = load_behavioral_data(filepath_behav)
-    trig = load_trigger_data(filepath_trig)
-
-    # Important information from edf file
-    ch_names = phys.ch_names
-    sfreq = phys.info['sfreq']
-
-    # Unpivot behavioral dataframe
-    evt = melt_events(dat, event_names)
-    
-    # Combine behavioral data and triggers.
-    trig_and_behav = merge_events_and_triggers(evt, trig, taskname)
-
-    # Create array for MNE
-    events = define_events(trig_and_behav)
-
-    return phys, ch_names, sfreq, trig_and_behav, events
-
-
-def tom_loc_triggers(trig_and_behav, events):
-    """
-    Add one to trigger numbers for photograph condition
-    to distinguish trigger events for MNE.
-    1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
-    """
-    for i in range(len(trig_and_behav)):
-        if trig_and_behav.loc[i, "trial_cond"] == "p":
-            events[i, 2] += 1
-            trig_and_behav.loc[i, "trigger"] += 1
-
-
-def initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin= -0.2, tmax=0.5):
-    """
-    Given ecog data phys, events, and event_id, plus option tmnin,
-    tmax, and channels of interest (picks), create MNE epochs object.
-    """
-    channel_indices = mne.pick_channels(phys.ch_names, channels_of_interest)
-    epochs_mne = mne.Epochs(phys, events, event_id=event_id, tmin=tmin, tmax=tmax, picks = channel_indices, add_eeg_ref=False)
-
-    return epochs_mne
-
-
-def create_evoked(epochs):
-    """
-    Load epochs data, split epochs object to two evoked responses
-    for belief and photograph condition, combine (subtracting belief
-    minus photograph) and return three evoked response objects.
-    """
-
-    epochs.load_data()
-
-    evoked_qb = epochs['b/quest_start'].average()
-    evoked_qp = epochs['p/quest_start'].average()
-
-    evoked_qbp = mne.combine_evoked([evoked_qb, evoked_qp], weights=[1, -1])
-
-    return evoked_qbp, evoked_qb, evoked_qp
-
+### Really slow Dataframe stuff
 
 def initialize_epochs_dataframe(epochs_mne):
     """
@@ -317,94 +304,3 @@ def plot_dataframe(patient, epochs, taskname, channel_i, trig_condition='quest_s
 
 
 
-def plot_time_series(evoked_qbp, evoked_qb, evoked_qp, channel, patient, taskname):
-    """
-    Using native MNE evoked (averaged epochs) objects, plot three time series plots
-    (for ToM Localizer task): belief condition, photograph condition,
-    and belief minus photograph condition. Save files to new directory in
-    patient's data directory.
-    """
-
-    folder = patient + '/' + taskname + "_TS_mne_images" + "/"
-
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    fig = evoked_qb.plot()
-    title = patient + " " + taskname + " " + channel[0] + " " + "TSb-p"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
-
-    fig = evoked_qp.plot()
-    title = patient + " " + taskname + " " + channel[0] + " " + "TSb"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
-
-    fig = evoked_qbp.plot()
-    title = patient + " " + taskname + " " + channel[0] + " " + "TSp"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
-
-
-def plot_tf(evoked_qbp, freqs, n_cycles, channel, patient, taskname):
-    """
-    Given evoked object (belief minus photo), use morlet wavelet on evoked object
-    to find power. Plot power (TF plot) and evoked response. Save figure to patient
-    directory.
-    """
-
-    power = mne.time_frequency.tfr_morlet(evoked_qbp, freqs=freqs, n_cycles=n_cycles, use_fft=True, return_itc=False, decim=3, n_jobs=1)
-
-    folder = patient + '/' + taskname + "_TF_images" + "/"
-
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    fig = power.plot([0], baseline=(-1., 0), mode="logratio", title=channel[0]+" TF Plot")
-
-    title = patient + " " + taskname + " " + channel[0] + " " + "TF"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
-
-    fig = evoked_qbp.plot()
-
-    title = patient + " " + taskname + " " + channel[0] + " " + "evoked"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
-
-
-def loop_through_plots(phys, dat, trig, event_names, event_id, tmin, tmax, patient, taskname, trig_condition, type_of_plotting, freqs=None, n_cycles=None):
-    """
-    Given patient data, loop through plotting and saving figures for all channels.
-
-    type_of_plotting:
-    'time_series_df' = time series plot using epochs dataframe (slower, but ~more flexible)
-    'time_series_mne' = time series plot using native mne epochs objects (faster)
-    'time_frequency' = time frequency plot using native mne evoked objects
-    """
-    for i in np.arange(len(phys.ch_names)):
-        print()
-        print ("{}".format(phys.ch_names[i]))
-        channels_of_interest = [phys.ch_names[i]]
-
-        if type_of_plotting == "time_series_df":
-            epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest, tmin=tmin, tmax=tmax, taskname=taskname)
-
-            plot_dataframe(patient, epochs, taskname, phys.ch_names[i], trig_condition=trig_condition)
-
-        elif type_of_plotting == "time_series_mne":
-            epochs = create_mne_epochs(dat, event_names, trig, taskname, phys, event_id, channels_of_interest, tmin, tmax)
-            evoked_qbp, evoked_qb, evoked_qp = create_evoked(epochs)
-
-            plot_time_series(evoked_qbp, evoked_qb, evoked_qp, channels_of_interest, patient, taskname)
-
-        elif type_of_plotting == "time_frequency":
-            epochs = create_mne_epochs(dat, event_names, trig, taskname, phys, event_id, channels_of_interest, tmin, tmax)
-            evoked_qbp, evoked_qb, evoked_qp = create_evoked(epochs)
-
-            plot_tf(evoked_qbp, freqs, n_cycles, channels_of_interest, patient, taskname)
