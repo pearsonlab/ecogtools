@@ -157,7 +157,9 @@ class Data:
 
     def create_evoked(self, condition):
         """
-        REWRITE
+        Average across epochs for one condition of task.
+        Append to list of all evoked variables created.
+        Return evoked object.
         """
         evoked = self.epochs[condition].average()
         self.evoked_list.append(evoked)
@@ -166,141 +168,79 @@ class Data:
 
     def compute_power(self, condition, freqs, n_cycles):
         """
-        COMMENT
+        Computer power and inter-trial coherence using tfr_morlet on one condition
+        of main epochs variable for task.
         """
         power, itc = mne.time_frequency.tfr_morlet(self.epochs[condition], freqs=freqs, n_cycles=n_cycles,
-                                                    use_fft=False, return_itc=True, average=True)
+                                                   return_itc=True, average=True)
 
         return power, itc
 
-def plot_tf(evoked_qbp, freqs, n_cycles, channel, patient, taskname):
+    def compute_diff_power(self, power1, power2):
+        """
+        Create AverageTFR object of difference of two powers.
+        Perform log of data of each of two powers and save
+        to combined.data instead of a direct subtraction.
+        """
+        combined = power1 - power2
+
+        power1log = 10*np.log10(power1.data)
+        power2log = 10*np.log10(power2.data)
+
+        combined.data = power1log - power2log
+
+        return combined
+
+
+if __name__ == "__main__":
     """
-    Given evoked object (belief minus photo), use morlet wavelet on evoked object
-    to find power. Plot power (TF plot) and evoked response. Save figure to patient
-    directory.
+    Example use case for ecogtools
+    If run through command line, must be located in
+    ecog_data_analysis folder. See Jupyter Notebook
+    for directories structure. Otherwise, can be imported
+    as module.
     """
+    # Define variables
+    patient_num = "2002"
 
-    power = mne.time_frequency.tfr_morlet(evoked_qbp, freqs=freqs, n_cycles=n_cycles, use_fft=True, return_itc=False, decim=3, n_jobs=1)
+    taskname = "ToM_Loc"
 
-    folder = patient + '/' + taskname + "_TF_images" + "/"
+    event_names = ['quest_start', 'story_start', 'time_of_resp']
 
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    event_id = {'b/story_start': 1, 'b/quest_start': 4, 'b/time_of_resp': 16,
+                'p/story_start': 2, 'p/quest_start': 5, 'p/time_of_resp': 17}
 
-    fig = power.plot([0], baseline=(-1., 0), mode="logratio", title=channel[0]+" TF Plot")
+    # Initial data processing
+    data = Data(patient_num, taskname, event_names, event_id)
 
-    title = patient + " " + taskname + " " + channel[0] + " " + "TF"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
+    # Choose channel of interest
+    channels_of_interest = ['RTG31']
+    data.initialize_epochs_object(channels_of_interest)
 
-    fig = evoked_qbp.plot()
+    # Average data for two conditions
+    evoked_belief = data.create_evoked("b/quest_start")
+    evoked_photo = data.create_evoked("p/quest_start")
 
-    title = patient + " " + taskname + " " + channel[0] + " " + "evoked"
-    filename =  title + ".png"
-    fig.savefig(folder + filename)
-    plt.close()
+    # Subtract averaged data
+    evoked_combined = mne.combine_evoked(data.evoked_list, weights=[1, -1])
 
-### Really slow Dataframe stuff
+    # Plot
+    evoked_belief.plot()
+    evoked_photo.plot()
+    evoked_combined.plot();
 
-def initialize_epochs_dataframe(epochs_mne):
-    """
-    Given epochs_mne object, create dataframe of epochs.
-    """
-    epochs_df = epochs_mne.to_data_frame(index='time', scale_time=10000)
-    epochs_df["trig_condition"] = epochs_df["condition"]
-    epochs_df.drop("condition", axis=1, inplace=True)
-    epochs_df_melt = pd.melt(epochs_df.reset_index(),
-                            id_vars=['time', 'trig_condition', 'epoch'],
-                            var_name='channel',
-                            value_name='voltage')
+    # Time frequency plot of two conditions, plot
+    freqs = np.arange(2, 100, 5)
+    n_cycles = freqs/2.
 
+    power1, itc1 = data.compute_power('b/quest_start', freqs, n_cycles)
+    power2, itc2 = data.compute_power('p/quest_start', freqs, n_cycles)
 
-    return epochs_df_melt
+    power1.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
+    power2.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
 
+    # Find ratio of two powers, plot
+    combined = data.compute_diff_power(power1, power2)
+    combined.plot([0]);
 
-def merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt):
-    """
-    Given merged trigger and evt dataframes (trig_merge) and
-    epochs df, merge.
-    """
-
-    ep_df = epochs_df_melt.merge(trig_merge, left_on='epoch', right_index=True)
-
-    return ep_df
-
-
-def merge_to_final_epochs_df(phys, dat, trig, event_names, event_id,
-    channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
-    """
-    Take all loaded data from phys, dat, and trig,
-    merge to create final epochs dataframe using
-    functions to merge events and triggers, define events,
-    and initialize epochs object.
-    """
-    evt = melt_events(dat, event_names)
-    trig_merge = merge_events_and_triggers(evt, trig, taskname=taskname)
-    events = define_events(trig)
-    epochs_mne = initialize_epochs_object(phys, events, event_id, channels_of_interest, tmin=tmin, tmax=tmax)
-    epochs_df_melt= initialize_epochs_dataframe(epochs_mne)
-    ep_df = merge_epochs_df_trig_and_evt(trig_merge, epochs_df_melt)
-
-    return ep_df, epochs_mne
-
-
-def preprocess_data(filepath_ecog, filepath_behav, filepath_trig, event_names, event_id,
-    channels_of_interest, tmin=-0.2, tmax=0.5, taskname=None):
-    """
-    Load data and create epochs dataframe based on channels of interest,
-    tmin and tmax, and task (including event_names and ids).
-    """
-
-    phys, dat, trig = load_data(filepath_ecog, filepath_behav, filepath_trig)
-    epochs, epochs_mne = merge_to_final_epochs_df(phys, dat, trig, event_names, event_id, channels_of_interest,
-    tmin=tmin, tmax=tmax, taskname=taskname)
-
-    return epochs, phys, dat, trig, epochs_mne
-
-
-def plot_dataframe(patient, epochs, taskname, channel_i, trig_condition='quest_start'):
-    """
-    Given the patient and epochs dataframe, plot time series data for
-    ToM_Localizer or ToM_2010 task. Save figure to new directory in
-    patient's data directory.
-    """
-
-    title = patient + " " + taskname + " " + channel_i
-    fig = plt.figure(figsize=(12, 9))
-    plt.title(title)
-    axes = plt.gca()
-    axes.set_ylim([-120, 120])
-
-    if taskname == "ToM_Loc":
-        query_string = 'channel == "{}"  & trig_condition == "{}"'.format(channel_i, trig_condition)
-        sns.tsplot(epochs.query(query_string), unit='epoch', condition='trial_cond', time='time', value='voltage')
-    elif taskname == "ToM_2010":
-        colors = sns.color_palette("Paired", 4)
-
-        query_string_1 = 'channel == "{}"  & trig_condition == "{}" & condition == "expected"'.format(channel_i, trig_condition)
-        query_string_2 = 'channel == "{}"  & trig_condition == "{}" & condition == "unexpected"'.format(channel_i, trig_condition)
-
-        sns.tsplot(epochs.query(query_string_1), unit='epoch', time='time', condition="state", ci=0,
-        value='voltage', color= [colors[0], colors[2]])
-        sns.tsplot(epochs.query(query_string_2), unit='epoch', condition='state', time='time', ci=0,
-        value='voltage', color= [colors[3], colors[1]])
-        plt.title(title+" (Light colors are expected)")
-
-
-    folder = patient + '/' + taskname + "_TS_df_images" + "/"
-    filename =  title + ".png"
-
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    fig.savefig(folder + filename)
-    plt.close()
-
-
-
-
-
+    combined.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
