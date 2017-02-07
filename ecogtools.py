@@ -26,6 +26,12 @@ class Data:
             self.load_data()
             self.tom_loc_triggers()
 
+        elif self.taskname == "ToM_2010":
+            self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Task_2010_" + patient_num + ".json"
+
+            self.load_data()
+            self.tom_2010_triggers()
+
         else:
             print("You haven't set up other tasks yet.")
 
@@ -141,6 +147,23 @@ class Data:
             if self.trig_and_behav.loc[i, "trial_cond"] == "p":
                 self.events[i, 2] += 1
                 self.trig_and_behav.loc[i, "trigger"] += 1
+
+    def tom_2010_triggers(self):
+        """
+        COMMENT
+        """
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "trigger_name"] == "quest_start":
+                if self.trig_and_behav.loc[i, "state"] == "mental" and self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                    self.events[i, 2] += 1
+                    self.trig_and_behav.loc[i, "trigger"] += 1
+                elif self.trig_and_behav.loc[i, "state"] == "physical":  
+                    if self.trig_and_behav.loc[i, "condition"] == "expected":
+                        self.events[i, 2] += 2
+                        self.trig_and_behav.loc[i, "trigger"] += 2
+                    elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                        self.events[i, 2] += 3
+                        self.trig_and_behav.loc[i, "trigger"] += 3
 
 
     def initialize_epochs_object(self, channels_of_interest, tmin=-1., tmax=5.0):
