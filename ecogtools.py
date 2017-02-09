@@ -108,9 +108,9 @@ class Data:
 
     def load_data(self):
         """
-        Load all data. Return phys, ch_names, sfreq (sampling frequency),
-        trig_and_behav (trigger dataframe and behavioral dataframe merged),
-        and events (a numpy array that MNE epochs requires for trigger times and values).
+        Load all data (physiology-edf, triggers-csv, behavioral-json).
+        Combine triggers and behavioral data to common dataframe.
+        Create array for defining events in MNE.
         """
         # Load data from file
         self.load_physiology_data()
