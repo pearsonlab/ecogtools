@@ -189,28 +189,23 @@ class Data:
 
         return evoked
 
-    def compute_power(self, condition, freqs, n_cycles):
+    def compute_power(self, condition, **kwargs):
         """
         Computer power and inter-trial coherence using tfr_morlet on one condition
         of main epochs variable for task.
         """
-        power, itc = mne.time_frequency.tfr_morlet(self.epochs[condition], freqs=freqs, n_cycles=n_cycles,
-                                                   return_itc=True, average=True)
+        power, itc = mne.time_frequency.tfr_morlet(self.epochs[condition], **kwargs)
 
         return power, itc
 
     def compute_diff_power(self, power1, power2):
         """
-        Create AverageTFR object of difference of two powers.
-        Perform log of data of each of two powers and save
-        to combined.data instead of a direct subtraction.
+        Create AverageTFR object of ratio of two powers.
+        
         """
         combined = power1 - power2
 
-        power1log = 10*np.log10(power1.data)
-        power2log = 10*np.log10(power2.data)
-
-        combined.data = power1log - power2log
+        combined.data = power1.data / power2.data
 
         return combined
 
