@@ -13,27 +13,13 @@ class Data:
 
     def __init__(self, patient_num, taskname, event_names, event_id):
         self.patient_num = patient_num
-        self.taskname = taskname
         self.event_names = event_names
         self.event_id = event_id
 
         self.ecogfile = "patient_" + patient_num + "/" + "john_" + patient_num + ".edf"
         self.trigfile = "patient_" + patient_num + "/" + patient_num + "_trigger_merged.csv"
 
-        if self.taskname == "ToM_Loc":
-            self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Loc_" + patient_num + ".json"
-
-            self.load_data()
-            self.tom_loc_triggers()
-
-        elif self.taskname == "ToM_2010":
-            self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Task_2010_" + patient_num + ".json"
-
-            self.load_data()
-            self.tom_2010_triggers()
-
-        else:
-            print("You haven't set up other tasks yet.")
+        self.load_data()
 
         self.check_directories()
 
@@ -137,44 +123,18 @@ class Data:
             os.makedirs(folder)
 
 
-    def tom_loc_triggers(self):
-        """
-        Add one to trigger numbers for photograph condition
-        to distinguish trigger events for MNE.
-        1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
-        """
-        for i in range(len(self.trig_and_behav)):
-            if self.trig_and_behav.loc[i, "trial_cond"] == "p":
-                self.events[i, 2] += 1
-                self.trig_and_behav.loc[i, "trigger"] += 1
-
-    def tom_2010_triggers(self):
-        """
-        COMMENT
-        """
-        for i in range(len(self.trig_and_behav)):
-            if self.trig_and_behav.loc[i, "trigger_name"] == "quest_start":
-                if self.trig_and_behav.loc[i, "state"] == "mental" and self.trig_and_behav.loc[i, "condition"] == "unexpected":
-                    self.events[i, 2] += 1
-                    self.trig_and_behav.loc[i, "trigger"] += 1
-                elif self.trig_and_behav.loc[i, "state"] == "physical":  
-                    if self.trig_and_behav.loc[i, "condition"] == "expected":
-                        self.events[i, 2] += 2
-                        self.trig_and_behav.loc[i, "trigger"] += 2
-                    elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
-                        self.events[i, 2] += 3
-                        self.trig_and_behav.loc[i, "trigger"] += 3
-
-
-    def initialize_epochs_object(self, channels_of_interest, tmin=-1., tmax=5.0):
+    def initialize_epochs_object(self, channels_of_interest, **kwargs):
         """
         Given ecog data phys, events, and event_id, plus option tmnin,
         tmax, and channels of interest (picks), create MNE epochs object.
         """
-        
+        if "tmin" not in kwargs:
+            kwargs["tmin"] = -1.0
+        if "tmax" not in kwargs:
+            kwargs["tmax"] = 5.0
+
         channel_indices = [i for i, j in enumerate(self.ch_names) for k in channels_of_interest if j == k]
-        self.epochs = mne.Epochs(self.phys, self.events, event_id=self.event_id, tmin=tmin, tmax=tmax, 
-                                picks = channel_indices, add_eeg_ref=False)
+        self.epochs = mne.Epochs(self.phys, self.events, event_id=self.event_id, picks = channel_indices, add_eeg_ref=False, **kwargs)
         self.epochs.load_data()
 
 
@@ -208,6 +168,71 @@ class Data:
         combined.data = power1.data / power2.data
 
         return combined
+
+
+
+class ToM_Localizer(Data):
+
+    def __init__(self, patient_num, event_names, event_id):
+        """
+        Class to import and analyze data for ToM Localizer task.
+        """
+
+        self.taskname = "ToM_Loc"
+        self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Loc_" + patient_num + ".json"
+
+        Data.__init__(self, patient_num, self.taskname, event_names, event_id)
+
+        self.set_triggers()
+
+
+    def set_triggers(self):
+        """
+        Add one to trigger numbers for photograph condition
+        to distinguish trigger events for MNE.
+        1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
+        """
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "trial_cond"] == "p":
+                self.events[i, 2] += 1
+                self.trig_and_behav.loc[i, "trigger"] += 1
+
+
+
+class ToM_2010(Data):
+
+    def __init__(self, patient_num, event_names, event_id):
+        """
+        Class to import and analyze data for ToM 2010 task.
+        """
+
+        self.taskname = "ToM_2010"
+        self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Task_2010_" + patient_num + ".json"
+
+        Data.__init__(self, patient_num, self.taskname, event_names, event_id)
+
+        self.set_triggers()
+
+
+    def set_triggers(self):
+        """
+        Add one to trigger numbers to distinguish between
+        four distinct cominations of events (all within quest_start
+        for now): mental x physical & expected x unexpected.
+        """
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "trigger_name"] == "quest_start":
+                if self.trig_and_behav.loc[i, "state"] == "mental" and self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                    self.events[i, 2] += 1
+                    self.trig_and_behav.loc[i, "trigger"] += 1
+                elif self.trig_and_behav.loc[i, "state"] == "physical":  
+                    if self.trig_and_behav.loc[i, "condition"] == "expected":
+                        self.events[i, 2] += 2
+                        self.trig_and_behav.loc[i, "trigger"] += 2
+                    elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                        self.events[i, 2] += 3
+                        self.trig_and_behav.loc[i, "trigger"] += 3
+
 
 
 if __name__ == "__main__":
