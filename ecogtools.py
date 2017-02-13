@@ -116,11 +116,27 @@ class Data:
         # Create array for MNE
         self.define_events()
 
+
     def check_directories(self):
         folder = "patient_" + self.patient_num + '/' + self.taskname + "_plots/"
 
         if not os.path.exists(folder):
             os.makedirs(folder)
+
+
+    def remove_irrelevant_channels(self, *args):
+        """
+        Removes irrelevant channels from ch_names list for easier plotting
+        (channels with no ECoG data). Can pass list of channels or use
+        default list that includes Event, Stim, and two EKG channels.
+        """
+
+        if args:
+            irrelevant_channels = args
+        else:
+            irrelevant_channels = ["Event", "STI 014", "EKGL", "EKGR"]
+
+        self.ch_names = [value for value in self.ch_names if not value in irrelevant_channels and not value.startswith("C")]
 
 
     def initialize_epochs_object(self, channels_of_interest, **kwargs):
