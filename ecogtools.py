@@ -123,6 +123,8 @@ class Data:
         if not os.path.exists(folder):
             os.makedirs(folder)
 
+        self.folder = folder
+
 
     def remove_irrelevant_channels(self, *args):
         """
@@ -149,7 +151,7 @@ class Data:
         if "tmax" not in kwargs:
             kwargs["tmax"] = 5.0
 
-        channel_indices = [i for i, j in enumerate(self.ch_names) for k in channels_of_interest if j == k]
+        channel_indices = [i for i, j in enumerate(self.phys.ch_names) for k in channels_of_interest if j == k]
         self.epochs = mne.Epochs(self.phys, self.events, event_id=self.event_id, picks = channel_indices, add_eeg_ref=False, **kwargs)
         self.epochs.load_data()
 
