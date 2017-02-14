@@ -11,13 +11,9 @@ import seaborn as sns
 
 class Data:
 
-    def __init__(self, patient_num, taskname, event_names, event_id):
-        self.patient_num = patient_num
-        self.event_names = event_names
-        self.event_id = event_id
-
-        self.ecogfile = "patient_" + patient_num + "/" + "john_" + patient_num + ".edf"
-        self.trigfile = "patient_" + patient_num + "/" + patient_num + "_trigger_merged.csv"
+    def __init__(self):
+        for key, value in self.parameters.items():
+            setattr(self, key, value)
 
         self.load_data()
 
@@ -123,7 +119,7 @@ class Data:
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        self.folder = folder
+        self.image_folder = folder
 
 
     def remove_irrelevant_channels(self, *args):
@@ -131,6 +127,7 @@ class Data:
         Removes irrelevant channels from ch_names list for easier plotting
         (channels with no ECoG data). Can pass list of channels or use
         default list that includes Event, Stim, and two EKG channels.
+        In both cases, will remove extra C### channels.
         """
 
         if args:
@@ -191,17 +188,36 @@ class Data:
 
 class ToM_Localizer(Data):
 
-    def __init__(self, patient_num, event_names, event_id):
+    def __init__(self, patient_num):
         """
         Class to import and analyze data for ToM Localizer task.
         """
-
+        self.patient_num = patient_num
         self.taskname = "ToM_Loc"
-        self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Loc_" + patient_num + ".json"
 
-        Data.__init__(self, patient_num, self.taskname, event_names, event_id)
+        self.import_parameters()
+        Data.__init__(self)
 
         self.set_triggers()
+
+    def import_parameters(self):
+        """
+        Parameters are .json files saved in
+        ecog_data_analysis for specific patients
+        and specific tasks. They are imported and
+        used as attributes that are passed to class.
+        """
+        filepath = self.patient_num + "_analysis.json"
+        with open(filepath) as fp:
+            parameters = json.load(fp)
+
+        with open("ToM_Loc_analysis.json") as fp:
+            parameters_task = json.load(fp)
+
+        parameters_task["behavfile"] = parameters["behavfilefolder"]+parameters_task["behavfile"]+parameters["patient_num"]+".json"
+        parameters_task.update(parameters)
+
+        self.parameters = parameters_task
 
 
     def set_triggers(self):
@@ -219,17 +235,37 @@ class ToM_Localizer(Data):
 
 class ToM_2010(Data):
 
-    def __init__(self, patient_num, event_names, event_id):
+    def __init__(self, patient_num):
         """
         Class to import and analyze data for ToM 2010 task.
         """
-
+        self.patient_num = patient_num
         self.taskname = "ToM_2010"
-        self.behavfile = "patient_" + patient_num + "/" + "behavioral_data_" + patient_num + "/ToM_Task_2010_" + patient_num + ".json"
 
-        Data.__init__(self, patient_num, self.taskname, event_names, event_id)
+        self.import_parameters()
+        Data.__init__(self)
 
         self.set_triggers()
+
+
+    def import_parameters(self):
+        """
+        Parameters are .json files saved in
+        ecog_data_analysis for specific patients
+        and specific tasks. They are imported and
+        used as attributes that are passed to class.
+        """
+        filepath = self.patient_num + "_analysis.json"
+        with open(filepath) as fp:
+            parameters = json.load(fp)
+
+        with open("ToM_2010_analysis.json") as fp:
+            parameters_task = json.load(fp)
+
+        parameters_task["behavfile"] = parameters["behavfilefolder"]+parameters_task["behavfile"]+parameters["patient_num"]+".json"
+        parameters_task.update(parameters)
+
+        self.parameters = parameters_task
 
 
     def set_triggers(self):
@@ -250,58 +286,3 @@ class ToM_2010(Data):
                     elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
                         self.events[i, 2] += 3
                         self.trig_and_behav.loc[i, "trigger"] += 3
-
-
-
-if __name__ == "__main__":
-    """
-    Example use case for ecogtools
-    If run through command line, must be located in
-    ecog_data_analysis folder. See Jupyter Notebook
-    for directories structure. Otherwise, can be imported
-    as module.
-    """
-    # Define variables
-    patient_num = "2002"
-
-    taskname = "ToM_Loc"
-
-    event_names = ['quest_start', 'story_start', 'time_of_resp']
-
-    event_id = {'b/story_start': 1, 'b/quest_start': 4, 'b/time_of_resp': 16,
-                'p/story_start': 2, 'p/quest_start': 5, 'p/time_of_resp': 17}
-
-    # Initial data processing
-    data = Data(patient_num, taskname, event_names, event_id)
-
-    # Choose channel of interest
-    channels_of_interest = ['RTG31']
-    data.initialize_epochs_object(channels_of_interest)
-
-    # Average data for two conditions
-    evoked_belief = data.create_evoked("b/quest_start")
-    evoked_photo = data.create_evoked("p/quest_start")
-
-    # Subtract averaged data
-    evoked_combined = mne.combine_evoked(data.evoked_list, weights=[1, -1])
-
-    # Plot
-    evoked_belief.plot()
-    evoked_photo.plot()
-    evoked_combined.plot();
-
-    # Time frequency plot of two conditions, plot
-    freqs = np.arange(2, 100, 5)
-    n_cycles = freqs/2.
-
-    power1, itc1 = data.compute_power('b/quest_start', freqs, n_cycles)
-    power2, itc2 = data.compute_power('p/quest_start', freqs, n_cycles)
-
-    power1.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
-    power2.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
-
-    # Find ratio of two powers, plot
-    combined = data.compute_diff_power(power1, power2)
-    combined.plot([0]);
-
-    combined.plot([0], baseline=(-1., 0), mode="ratio", dB=True);
