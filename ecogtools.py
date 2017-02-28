@@ -24,11 +24,14 @@ class Data:
         
     def load_physiology_data(self):
         """
-        Given filepath for ecog .edf file,
+        Given filepath for ecog file,
         return mne raw_data object of ecog time series data.
         """
 
-        self.phys = mne.io.read_raw_edf(self.ecogfile, preload=False)
+        if self.ecogfile.endswith(".edf"):
+            self.phys = mne.io.read_raw_edf(self.ecogfile, preload=False)
+        elif self.ecogfile.endswith(".fif"):
+            self.phys = mne.io.read_raw_fif(self.ecogfile, preload=False)
 
 
     def load_behavioral_data(self):
