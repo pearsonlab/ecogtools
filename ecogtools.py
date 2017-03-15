@@ -289,3 +289,16 @@ class ToM_2010(Data):
                     elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
                         self.events[i, 2] += 3
                         self.trig_and_behav.loc[i, "trigger"] += 3
+
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "trigger_name"] == "time_of_response":
+                if self.trig_and_behav.loc[i, "state"] == "mental" and self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                    self.events[i, 2] += 1
+                    self.trig_and_behav.loc[i, "trigger"] += 1
+                elif self.trig_and_behav.loc[i, "state"] == "physical":  
+                    if self.trig_and_behav.loc[i, "condition"] == "expected":
+                        self.events[i, 2] += 2
+                        self.trig_and_behav.loc[i, "trigger"] += 2
+                    elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
+                        self.events[i, 2] += 3
+                        self.trig_and_behav.loc[i, "trigger"] += 3
