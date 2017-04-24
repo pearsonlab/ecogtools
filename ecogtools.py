@@ -302,3 +302,47 @@ class ToM_2010(Data):
                     elif self.trig_and_behav.loc[i, "condition"] == "unexpected":
                         self.events[i, 2] += 3
                         self.trig_and_behav.loc[i, "trigger"] += 3
+
+class faces_task(Data):
+
+    def __init__(self, patient_num):
+        """
+        Class to import and analyze data for ToM Localizer task.
+        """
+        self.patient_num = patient_num
+        self.taskname = "faces"
+
+        self.import_parameters()
+        Data.__init__(self)
+
+        self.set_triggers()
+
+    def import_parameters(self):
+        """
+        Parameters are .json files saved in
+        ecog_data_analysis for specific patients
+        and specific tasks. They are imported and
+        used as attributes that are passed to class.
+        """
+        filepath = self.patient_num + "_analysis.json"
+        with open(filepath) as fp:
+            parameters = json.load(fp)
+
+        with open("faces_task_analysis.json") as fp:
+            parameters_task = json.load(fp)
+
+        parameters_task["behavfile"] = parameters["behavfilefolder"]+parameters_task["behavfile"]+parameters["patient_num"]+".json"
+        parameters_task.update(parameters)
+
+        self.parameters = parameters_task
+
+    def set_triggers(self):
+        """
+        Add one to trigger numbers for photograph condition
+        to distinguish trigger events for MNE.
+        1, 4, 16 (belief) becomes 2, 5, 17 (photograph).
+        """
+        for i in range(len(self.trig_and_behav)):
+            if self.trig_and_behav.loc[i, "type"] == "happy":
+                self.events[i, 2] += 1
+                self.trig_and_behav.loc[i, "trigger"] += 1
